@@ -1,0 +1,225 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>New Cut Piece - Billing</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;font-family:Arial,sans-serif;background:#f2f4f8;color:#202938}
+header{background:#172d4d;color:white;padding:18px}
+header h2{margin:0 0 5px}
+header p{margin:0;color:#d6e2f2;font-size:13px}
+main{max-width:760px;margin:auto;padding:14px}
+.card{background:white;padding:15px;border-radius:12px;margin-bottom:14px;box-shadow:0 2px 8px #0000000b}
+h3{margin:0 0 14px;font-size:17px}
+label{display:block;font-size:13px;margin:10px 0 5px;color:#505c6e}
+input,select,button{font:inherit}
+input,select{width:100%;padding:11px;border:1px solid #cbd2dc;border-radius:7px;background:white}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.item{border:1px solid #e0e5ec;padding:10px;border-radius:9px;margin:10px 0}
+.itemgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+button{border:0;border-radius:8px;padding:12px;cursor:pointer;font-weight:bold}
+.primary{background:#1757a6;color:white;width:100%;margin-top:12px}
+.secondary{background:#e8eef8;color:#173b69}
+.danger{background:#fff0f0;color:#b42318;padding:8px}
+.add{width:100%;background:#e7f5ec;color:#176b3a}
+.totalrow{display:flex;justify-content:space-between;gap:12px;margin:10px 0}
+.totalrow strong{font-size:17px}
+.muted{font-size:12px;color:#697586}
+.bill{border-top:1px solid #e0e5ec;padding:12px 0}
+.hidden{display:none}
+nav{display:flex;gap:8px;margin-bottom:12px}
+nav button{flex:1;padding:10px 4px}
+nav button.active{background:#1757a6;color:white}
+@media(min-width:550px){.itemgrid{grid-template-columns:2fr 1fr 1fr 1fr}}
+@media print{
+header,nav,.no-print,button{display:none!important}
+body{background:white}
+main{max-width:none;padding:0}
+.card{box-shadow:none;border:0}
+}
+</style>
+</head>
+<body>
+<header>
+<h2>New Cut Piece</h2>
+<p>Shop Billing · Cashbook · Local prototype</p>
+</header>
+<main>
+<nav class="no-print">
+<button id="billTab" class="active" onclick="showTab('billing')">New Bill</button>
+<button id="historyTab" class="secondary" onclick="showTab('history')">Saved Bills</button>
+</nav>
+
+<section id="billing">
+<div class="card">
+<h3>Bill Details</h3>
+<div class="row">
+<div><label>Bill Number</label><input id="billNo" readonly></div>
+<div><label>Date</label><input id="billDate" type="date"></div>
+</div>
+<label>Customer</label>
+<input id="customer" value="Cash Customer" placeholder="Customer name (optional)">
+</div>
+
+<div class="card">
+<h3>Items</h3>
+<div id="items"></div>
+<button class="add no-print" onclick="addItem()">+ Add item</button>
+<div class="totalrow"><span>Subtotal</span><strong id="subtotal">₹0.00</strong></div>
+<div class="muted">For bargaining, enter the final amount received below. Discount is calculated automatically.</div>
+</div>
+
+<div class="card">
+<h3>Payment</h3>
+<div class="row">
+<div><label>Cash received (₹)</label><input id="cash" type="number" min="0" step=".01" value="0" oninput="updateTotals()"></div>
+<div><label>UPI / Paytm received (₹)</label><input id="upi" type="number" min="0" step=".01" value="0" oninput="updateTotals()"></div>
+</div>
+<div class="totalrow"><span>Subtotal</span><span id="subtotal2">₹0.00</span></div>
+<div class="totalrow"><span>Discount</span><strong id="discount">₹0.00</strong></div>
+<div class="totalrow"><span>Final bill total</span><strong id="finalTotal">₹0.00</strong></div>
+<div class="totalrow"><span>Payment difference</span><strong id="difference">₹0.00</strong></div>
+<p class="muted">Cash + UPI determines the final bill after discount. Difference shows if the received amount is above or below the item subtotal.</p>
+<button class="primary no-print" onclick="saveBill()">Save Bill</button>
+<button class="secondary no-print" style="width:100%;margin-top:8px" onclick="window.print()">Print / Save PDF</button>
+</div>
+</section>
+
+<section id="history" class="hidden">
+<div class="card">
+<h3>Saved Bills on This Device</h3>
+<p class="muted">These records are stored only in this browser, not in the cloud.</p>
+<div id="savedBills"></div>
+<div class="totalrow"><span>Total saved sales</span><strong id="savedTotal">₹0.00</strong></div>
+<button class="secondary no-print" onclick="exportBills()">Export bills as CSV</button>
+</div>
+</section>
+</main>
+
+<script>
+let itemCount=0;
+let bills=[];
+try{bills=JSON.parse(localStorage.getItem('ncp_bills')||'[]')}catch(e){bills=[]}
+function money(n){return '₹'+(Number(n)||0).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2})}
+function nextNo(){return Number(localStorage.getItem('ncp_next_bill')||1)}
+function setup(){
+document.getElementById('billNo').value=nextNo();
+document.getElementById('billDate').value=new Date().toLocaleDateString('en-CA');
+addItem();
+}
+function addItem(){
+itemCount++;
+let d=document.createElement('div');
+d.className='item';
+d.innerHTML=`
+<div class="itemgrid">
+<div><label>Item / Fabric name</label><input class="iname" placeholder="e.g. Shirt fabric"></div>
+<div><label>Quantity</label><input class="qty" type="number" min="0" step="0.01" value="1" oninput="updateTotals()"></div>
+<div><label>Unit</label><select class="unit"><option>metre</option><option>piece</option><option>set</option><option>other</option></select></div>
+<div><label>Rate (₹)</label><input class="rate" type="number" min="0" step="0.01" value="0" oninput="updateTotals()"></div>
+</div>
+<div class="totalrow"><span>Line total</span><strong class="lineTotal">₹0.00</strong></div>
+<button class="danger no-print" onclick="this.closest('.item').remove();updateTotals()">Remove item</button>`;
+document.getElementById('items').appendChild(d);
+updateTotals();
+}
+function getItems(){
+return [...document.querySelectorAll('.item')].map(el=>({
+name:el.querySelector('.iname').value.trim(),
+qty:Number(el.querySelector('.qty').value)||0,
+unit:el.querySelector('.unit').value,
+rate:Number(el.querySelector('.rate').value)||0
+})).map(x=>({...x,total:x.qty*x.rate}));
+}
+function updateTotals(){
+let items=getItems();
+let sub=items.reduce((s,x)=>s+x.total,0);
+document.querySelectorAll('.item').forEach((el,i)=>el.querySelector('.lineTotal').textContent=money(items[i].total));
+let received=(Number(document.getElementById('cash').value)||0)+(Number(document.getElementById('upi').value)||0);
+let discount=Math.max(0,sub-received);
+let finalTotal=sub-discount;
+document.getElementById('subtotal').textContent=money(sub);
+document.getElementById('subtotal2').textContent=money(sub);
+document.getElementById('discount').textContent=money(discount);
+document.getElementById('finalTotal').textContent=money(finalTotal);
+document.getElementById('difference').textContent=money(received-sub);
+return {items,sub,received,discount,finalTotal};
+}
+function saveBill(){
+let t=updateTotals();
+let items=t.items.filter(x=>x.name&&x.qty>0);
+if(!items.length){alert('Enter at least one item name and a quantity.');return}
+if(t.received<=0){alert('Enter the cash or UPI amount received.');return}
+if(t.received>t.sub+0.001){alert('Received amount is greater than subtotal. Check the entered amounts.');return}
+let bill={
+no:nextNo(),
+date:document.getElementById('billDate').value,
+customer:document.getElementById('customer').value.trim()||'Cash Customer',
+items:items,
+subtotal:t.sub,
+discount:t.discount,
+total:t.finalTotal,
+cash:Number(document.getElementById('cash').value)||0,
+upi:Number(document.getElementById('upi').value)||0,
+savedAt:new Date().toISOString()
+};
+bills.push(bill);
+try{
+localStorage.setItem('ncp_bills',JSON.stringify(bills));
+localStorage.setItem('ncp_next_bill',String(bill.no+1));
+}catch(e){alert('Browser storage is full. Export your bills and clear space.');return}
+alert('Bill '+bill.no+' saved on this device.');
+document.getElementById('items').innerHTML='';
+document.getElementById('cash').value='0';
+document.getElementById('upi').value='0';
+document.getElementById('customer').value='Cash Customer';
+addItem();
+document.getElementById('billNo').value=nextNo();
+renderHistory();
+}
+function showTab(tab){
+document.getElementById('billing').classList.toggle('hidden',tab!=='billing');
+document.getElementById('history').classList.toggle('hidden',tab!=='history');
+document.getElementById('billTab').className=tab==='billing'?'active':'secondary';
+document.getElementById('historyTab').className=tab==='history'?'active':'secondary';
+if(tab==='history')renderHistory();
+}
+function renderHistory(){
+let root=document.getElementById('savedBills');
+root.innerHTML='';
+let total=0;
+if(!bills.length)root.innerHTML='<p>No bills saved yet.</p>';
+[...bills].reverse().forEach(b=>{
+total+=Number(b.total)||0;
+let d=document.createElement('div');
+d.className='bill';
+let title=document.createElement('strong');
+title.textContent='Bill #'+b.no+' · '+b.date;
+let info=document.createElement('p');
+info.textContent=(b.customer||'Cash Customer')+' · '+money(b.total);
+let detail=document.createElement('p');
+detail.className='muted';
+detail.textContent=b.items.map(i=>i.name+' ('+i.qty+' '+i.unit+')').join(', ');
+d.append(title,info,detail);
+root.appendChild(d);
+});
+document.getElementById('savedTotal').textContent=money(total);
+}
+function exportBills(){
+if(!bills.length){alert('No bills to export yet.');return}
+let rows=[['Bill No','Date','Customer','Items','Subtotal','Discount','Total','Cash','UPI']];
+bills.forEach(b=>rows.push([b.no,b.date,b.customer,b.items.map(i=>i.name+' '+i.qty+' '+i.unit+' @ '+i.rate).join('; '),b.subtotal,b.discount,b.total,b.cash,b.upi]));
+let csv=rows.map(r=>r.map(v=>'"'+String(v??'').replace(/"/g,'""')+'"').join(',')).join('\r\n');
+let a=document.createElement('a');
+a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8;'}));
+a.download='new-cut-piece-bills.csv';
+a.click();
+URL.revokeObjectURL(a.href);
+}
+setup();
+</script>
+</body>
+</html>
