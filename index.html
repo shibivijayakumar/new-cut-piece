@@ -169,38 +169,128 @@ document.getElementById('finalTotal').textContent=money(finalTotal);
 document.getElementById('difference').textContent=money(received-sub);
 return {items,sub,received,discount,finalTotal};
 }
-function saveBill(){
-let t=updateTotals();
-let items=t.items.filter(x=>x.name&&x.qty>0);
-if(!items.length){alert('Enter at least one item name and a quantity.');return}
-if(t.received<=0){alert('Enter the cash or UPI amount received.');return}
-if(t.received>t.sub+0.001){alert('Received amount is greater than subtotal. Check the entered amounts.');return}
-let bill={
-no:nextNo(),
-date:document.getElementById('billDate').value,
-customer:document.getElementById('customer').value.trim()||'Cash Customer',
-items:items,
-subtotal:t.sub,
-discount:t.discount,
-total:t.finalTotal,
-cash:Number(document.getElementById('cash').value)||0,
-upi:Number(document.getElementById('upi').value)||0,
-savedAt:new Date().toISOString()
-};
-bills.push(bill);
-try{
-localStorage.setItem('ncp_bills',JSON.stringify(bills));
-localStorage.setItem('ncp_next_bill',String(bill.no+1));
-}catch(e){alert('Browser storage is full. Export your bills and clear space.');return}
-alert('Bill '+bill.no+' saved on this device.');
-document.getElementById('items').innerHTML='';
-document.getElementById('cash').value='0';
-document.getElementById('upi').value='0';
-document.getElementById('customer').value='Cash Customer';
-addItem();
-document.getElementById('billNo').value=nextNo();
-renderHistory();
+async function saveBill(){
+  const button = document.querySelector('button[onclick="saveBill()"]');
+  if(button.disabled) return;
+
+  const t = updateTotals();
+  const items = t.items.filter(x => x.name && x.qty > 0);
+
+  if(!items.length){
+    alert('Enter at least one item name and a quantity.');
+    return;
+  }
+  if(t.received <= 0){
+    alert('Enter the cash or UPI amount received.');
+    return;
+  }
+  if(t.received > t.sub + 0.001){
+    alert('Received amount is greater than subtotal. Check the entered amounts.');
+    return;
+  }
+
+  button.disabled = true;
+  button.textContent = 'Saving...';
+
+  try {
+    const { data: sessionData, error: sessionError } =
+      await supabaseClient.auth.getSession();
+
+    if(sessionError) throw sessionError;
+
+    const user = sessionData.session?.user;
+    if(!user) throw new Error('Please sign in again.');
+
+    const billNo = nextNo();
+    const bill = {
+      bill_no: billNo,
+      user_id: user.id,
+      customer_name:
+        document.getElementById('customer').value.trim() || 'Cash Customer',
+      subtotal: t.sub,
+      bargain_discount: t.discount,
+      final_total: t.finalTotal,
+      cash_received: Number(document.getElementById('cash').value) || 0,
+      upi_received: Number(document.getElementById('upi').value) || 0,
+      balance_due: 0,
+      payment_method:
+        (Number(document.getElementById('cash').value) > 0 &&
+         Number(document.getElementById('upi').value) > 0)
+          ? 'cash_and_upi'
+          : (Number(document.getElementById('upi').value) > 0 ? 'upi' : 'cash')
+    };
+
+    const { data: savedBill, error: billError } =
+      await supabaseClient
+        .from('bills')
+        .insert(bill)
+        .select('id')
+        .single();
+
+    if(billError) throw billError;
+
+    const billItems = items.map(item => ({
+      bill_id: savedBill.id,
+      user_id: user.id,
+      product_name: item.name,
+      quantity: item.qty,
+      unit: item.unit,
+      rate: item.rate,
+      line_total: item.total
+    }));
+
+    const { error: itemsError } = await supabaseClient
+      .from('bill_items')
+      .insert(billItems);
+
+    if(itemsError){
+      alert(
+        'The bill record was created, but its items could not be saved. ' +
+        'Do not retry this bill yet. Error: ' + itemsError.message
+      );
+      return;
+    }
+
+    const localBill = {
+      no: billNo,
+      date: document.getElementById('billDate').value,
+      customer: bill.customer_name,
+      items,
+      subtotal: t.sub,
+      discount: t.discount,
+      total: t.finalTotal,
+      cash: bill.cash_received,
+      upi: bill.upi_received,
+      savedAt: new Date().toISOString()
+    };
+
+    bills.push(localBill);
+
+    try {
+      localStorage.setItem('ncp_bills', JSON.stringify(bills));
+      localStorage.setItem('ncp_next_bill', String(billNo + 1));
+    } catch(storageError) {
+      alert('Bill saved online, but browser history could not be updated. Export or check your records.');
+    }
+
+    alert('Bill ' + billNo + ' saved to Supabase.');
+
+    document.getElementById('items').innerHTML = '';
+    document.getElementById('cash').value = '0';
+    document.getElementById('upi').value = '0';
+    document.getElementById('customer').value = 'Cash Customer';
+    addItem();
+    document.getElementById('billNo').value = nextNo();
+    renderHistory();
+
+  } catch(error) {
+    alert('Bill was not fully saved: ' + error.message);
+  } finally {
+    button.disabled = false;
+    button.textContent = 'Save Bill';
+  }
 }
+
 function showTab(tab){
 document.getElementById('billing').classList.toggle('hidden',tab!=='billing');
 document.getElementById('history').classList.toggle('hidden',tab!=='history');
