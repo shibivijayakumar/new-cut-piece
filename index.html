@@ -47,13 +47,24 @@ main{max-width:none;padding:0}
 <h2>New Cut Piece</h2>
 <p>Shop Billing · Cashbook · Local prototype</p>
 </header>
-<main>
-<nav class="no-print">
+<main> 
+  <section id="loginSection" class="card">
+  <h3>Shop Login</h3>
+  <label>Email</label>
+  <input id="loginEmail" type="email" placeholder="Enter your email">
+
+  <label>Password</label>
+  <input id="loginPassword" type="password" placeholder="Enter your password">
+
+  <button class="primary" onclick="login()">Sign In</button>
+  <p id="loginMessage" class="muted"></p>
+</section>
+<nav class="no-print hidden">
 <button id="billTab" class="active" onclick="showTab('billing')">New Bill</button>
 <button id="historyTab" class="secondary" onclick="showTab('history')">Saved Bills</button>
 </nav>
 
-<section id="billing">
+<section id="billing" class="hidden">
 <div class="card">
 <h3>Bill Details</h3>
 <div class="row">
@@ -99,7 +110,17 @@ main{max-width:none;padding:0}
 </section>
 </main>
 
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
+const SUPABASE_URL = "https://doegpxbgffiaqvpaqksf.supabase.co";
+const SUPABASE_KEY = "sb_publishable_D_pXS6rz2lWpDH17pNSTPA_u6B81z8E";
+
+const supabaseClient = window.supabase.createClient(
+  SUPABASE_URL,
+  SUPABASE_KEY
+);
+
 let itemCount=0;
 let bills=[];
 try{bills=JSON.parse(localStorage.getItem('ncp_bills')||'[]')}catch(e){bills=[]}
@@ -219,6 +240,43 @@ a.download='new-cut-piece-bills.csv';
 a.click();
 URL.revokeObjectURL(a.href);
 }
+async function login(){
+  const email = document.getElementById('loginEmail').value.trim();
+  const password = document.getElementById('loginPassword').value;
+  const message = document.getElementById('loginMessage');
+
+  message.textContent = 'Signing in...';
+
+  const { error } = await supabaseClient.auth.signInWithPassword({
+    email: email,
+    password: password
+  });
+
+  if(error){
+    message.textContent = 'Login failed: ' + error.message;
+    return;
+  }
+
+  document.getElementById('loginSection').classList.add('hidden');
+  document.querySelector('nav').classList.remove('hidden');
+  document.getElementById('billing').classList.remove('hidden');
+  message.textContent = '';
+  }
+async function checkLogin(){
+  const { data, error } = await supabaseClient.auth.getSession();
+
+  if(error){
+    console.error('Session check failed:', error.message);
+    return;
+  }
+
+  if(data.session){
+    document.getElementById('loginSection').classList.add('hidden');
+    document.querySelector('nav').classList.remove('hidden');
+    document.getElementById('billing').classList.remove('hidden');
+  }
+}
+  checklogin();
 setup();
 </script>
 </body>
