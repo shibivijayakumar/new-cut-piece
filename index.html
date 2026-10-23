@@ -203,7 +203,7 @@ async function saveBill(){
 
     const billNo = nextNo();
     const bill = {
-      bill_no: billNo,
+    
       user_id: user.id,
       customer_name:
         document.getElementById('customer').value.trim() || 'Cash Customer',
